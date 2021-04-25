@@ -5,15 +5,15 @@ import "errors"
 var ErrIsEmpty = errors.New("ring buffer is empty")
 
 type RingBuffer struct {
-	size    uint32
-	rpos    uint32
-	wpos    uint32
+	size    uint64
+	rpos    uint64
+	wpos    uint64
 	buf     []byte
 	isEmpty bool
 	next    *NwBuffer
 }
 
-func New(size uint32) *RingBuffer {
+func New(size uint64) *RingBuffer {
 	return &RingBuffer{
 		buf:     make([]byte, size, size),
 		size:    size,
@@ -24,7 +24,7 @@ func New(size uint32) *RingBuffer {
 func NewWithData(data []byte) *RingBuffer {
 	return &RingBuffer{
 		buf:  data,
-		size: uint32(len(data)),
+		size: uint64(len(data)),
 	}
 }
 
@@ -32,7 +32,7 @@ func (r *RingBuffer) WithData(data []byte) {
 	r.rpos = 0
 	r.wpos = 0
 	r.isEmpty = false
-	r.size = uint32(len(data))
+	r.size = uint64(len(data))
 	r.buf = data
 }
 
@@ -42,7 +42,7 @@ func (r *RingBuffer) RetrieveAll() {
 	r.isEmpty = true
 }
 
-func (r *RingBuffer) Retrieve(len uint32) {
+func (r *RingBuffer) Retrieve(len uint64) {
 	if r.isEmpty || len <= 0 {
 		return
 	}
@@ -58,14 +58,14 @@ func (r *RingBuffer) Retrieve(len uint32) {
 	}
 }
 
-func (r *RingBuffer) Read(p []byte) (n uint32, err error) {
+func (r *RingBuffer) Read(p []byte) (n uint64, err error) {
 	if len(p) == 0 {
 		return 0, nil
 	}
 	if r.isEmpty {
 		return 0, ErrIsEmpty
 	}
-	n = uint32(len(p))
+	n = uint64(len(p))
 	//wpos faster than rpos
 	if r.wpos > r.rpos {
 		if n > r.wpos-r.rpos {
@@ -103,7 +103,7 @@ func (r *RingBuffer) Read(p []byte) (n uint32, err error) {
 	return
 }
 
-func (r *RingBuffer) makeSpace(len uint32) {
+func (r *RingBuffer) makeSpace(len uint64) {
 	newSize := r.size + len
 	newBuf := make([]byte, newSize, newSize)
 	oldLen := r.freeReadSpace()
@@ -115,11 +115,11 @@ func (r *RingBuffer) makeSpace(len uint32) {
 	r.buf = newBuf
 }
 
-func (r *RingBuffer) Write(p []byte) (n uint32, err error) {
+func (r *RingBuffer) Write(p []byte) (n uint64, err error) {
 	if len(p) == 0 {
 		return 0, nil
 	}
-	n = uint32(len(p))
+	n = uint64(len(p))
 	free := r.freeWritreSpace()
 	if free < n {
 		r.makeSpace(n - free)
@@ -148,7 +148,7 @@ func (r *RingBuffer) Write(p []byte) (n uint32, err error) {
 }
 
 //free_write_space
-func (r *RingBuffer) freeWritreSpace() uint32 {
+func (r *RingBuffer) freeWritreSpace() uint64 {
 	if r.wpos == r.rpos {
 		if r.isEmpty {
 			return r.size
@@ -164,7 +164,7 @@ func (r *RingBuffer) freeWritreSpace() uint32 {
 }
 
 //free_read_space
-func (r *RingBuffer) freeReadSpace() uint32 {
+func (r *RingBuffer) freeReadSpace() uint64 {
 	if r.wpos == r.rpos {
 		if r.isEmpty {
 			return 0
