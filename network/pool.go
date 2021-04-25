@@ -1,3 +1,4 @@
+//Copyright (c) 2021 Comolli
 //Copyright (c) 2016 Aliaksandr Valialkin, VertaMedia
 //
 //Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -20,27 +21,98 @@
 //
 // Use of this source code is governed by a MIT license that can be found
 // at https://github.com/valyala/bytebufferpool/blob/master/LICENSE
-/*
-
- */
 package network
 
+/*
+#ifndef GET_CACHE_LINE_SIZE_H_INCLUDED
+#define GET_CACHE_LINE_SIZE_H_INCLUDED
+
+
+#include <stddef.h>
+size_t cache_line_size();
+
+#if defined(__APPLE__)
+
+#include <sys/sysctl.h>
+size_t cache_line_size() {
+    size_t line_size = 0;
+    size_t sizeof_line_size = sizeof(line_size);
+    sysctlbyname("hw.cachelinesize", &line_size, &sizeof_line_size, 0, 0);
+    return line_size;
+}
+
+#elif defined(_WIN32)
+
+#include <stdlib.h>
+#include <windows.h>
+size_t cache_line_size() {
+    size_t line_size = 0;
+    DWORD buffer_size = 0;
+    DWORD i = 0;
+    SYSTEM_LOGICAL_PROCESSOR_INFORMATION * buffer = 0;
+
+    GetLogicalProcessorInformation(0, &buffer_size);
+    buffer = (SYSTEM_LOGICAL_PROCESSOR_INFORMATION *)malloc(buffer_size);
+    GetLogicalProcessorInformation(&buffer[0], &buffer_size);
+
+    for (i = 0; i != buffer_size / sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION); ++i) {
+        if (buffer[i].Relationship == RelationCache && buffer[i].Cache.Level == 1) {
+            line_size = buffer[i].Cache.LineSize;
+            break;
+        }
+    }
+
+    free(buffer);
+    return line_size;
+}
+
+#elif defined(linux)
+
+#include <stdio.h>
+size_t cache_line_size() {
+    FILE * p = 0;
+    p = fopen("/sys/devices/system/cpu/cpu0/cache/index0/coherency_line_size", "r");
+    unsigned int i = 0;
+    if (p) {
+        fscanf(p, "%d", &i);
+        fclose(p);
+    }
+    return i;
+}
+
+#else
+#error Unrecognized platform
+#endif
+
+#endif
+*/
+import "C"
 import (
 	"sort"
 	"sync"
 	"sync/atomic"
 )
 
+var (
+	minBitSize uint64 // 2**6=64 is a CPU cache line size
+	minSize    uint64 = 1 << minBitSize
+	maxSize    uint64 = 1 << (minBitSize + steps - 1)
+)
+
 const (
-	minBitSize = 6 // 2**6=64 is a CPU cache line size
-	steps      = 20
-
-	minSize = 1 << minBitSize
-	maxSize = 1 << (minBitSize + steps - 1)
-
+	steps                   = 20
 	calibrateCallsThreshold = 42000
 	maxPercentile           = 0.95
 )
+
+func init() {
+	switch temp := C.cache_line_size() == 64; temp {
+	case true:
+		minBitSize = uint64(6)
+	case false:
+		minBitSize = uint64(5)
+	}
+}
 
 // Pool represents byte buffer pool.
 //
