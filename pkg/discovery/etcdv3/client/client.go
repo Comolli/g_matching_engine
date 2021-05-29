@@ -127,36 +127,41 @@ func (client *Client) DelPrefix(ctx context.Context, prefix string) (int64, erro
 func (client *Client) GetValues(ctx context.Context, keys ...string) (res map[string]string, err error) {
 	var firstRevision int64 = 0
 	var getOps = make([]string, 0, maxTxnOps)
-	for i, key := range keys {
-		getOps = append(getOps, key)
-		//batch dotxn tx
-		if len(getOps) >= maxTxnOps || i == len(keys)-1 {
-			result, err := client.dotxn(OpGet, getOps, firstRevision, ctx)
+	cnt := len(keys) / maxTxnOps
+	var result *clientv3.TxnResponse
+	for i := 0; i <= cnt; i++ {
+		if i == cnt {
+			result, err = client.dotxn(OpGet, keys[i*maxTxnOps:], firstRevision, ctx)
 			if err != nil {
-				return nil, err
+				return
 			}
-			for i, r := range result.Responses {
-				originKey := getOps[i]
-				originKeyFixed := originKey
-				if !strings.HasSuffix(originKeyFixed, "/") {
-					originKeyFixed = originKey + "/"
-				}
-				for _, ev := range r.GetResponseRange().Kvs {
-					k := string(ev.Key)
-					if k == originKey || strings.HasPrefix(k, originKeyFixed) {
-						res[string(ev.Key)] = string(ev.Value)
-					}
-				}
-				if firstRevision == 0 {
-					firstRevision = result.Header.GetRevision()
+		}
+		result, err = client.dotxn(OpGet, keys[i*maxTxnOps:(i+1)*maxTxnOps], firstRevision, ctx)
+		if err != nil {
+			if err != nil {
+				return
+			}
+		}
+		for i, r := range result.Responses {
+			originKey := getOps[i]
+			originKeyFixed := originKey
+			if !strings.HasSuffix(originKeyFixed, "/") {
+				originKeyFixed = originKey + "/"
+			}
+			for _, ev := range r.GetResponseRange().Kvs {
+				k := string(ev.Key)
+				if k == originKey || strings.HasPrefix(k, originKeyFixed) {
+					res[string(ev.Key)] = string(ev.Value)
 				}
 			}
-			getOps = getOps[:0]
+			if firstRevision == 0 {
+				firstRevision = result.Header.GetRevision()
+			}
 		}
 	}
 	return
 }
-func dumpPrefixTx() {}
+
 func (client *Client) dotxn(op Op, ops []string, firstRevision int64, ctx context.Context) (result *clientv3.TxnResponse, err error) {
 	txnOps := make([]clientv3.Op, 0, maxTxnOps)
 
